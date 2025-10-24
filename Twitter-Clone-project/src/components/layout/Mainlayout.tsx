@@ -8,10 +8,10 @@ import Rightsidebar from './Rightsidebar'; // <-- import your right sidebar
 import ProfilePage from '../ProfilePage';
 
 const Mainlayout = ({ children }: any) => {
-    const { user, isloading } = useAuth();
+    const { user, isLoading } = useAuth();
     const [currentPage, setCurrentPage] = useState('Home');
 
-    if (isloading) {
+    if (isLoading) {
         return (
             <div className='flex justify-center items-center min-h-screen bg-black'>
                 <div className='text-center'>
