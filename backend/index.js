@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import User from './models/User.js';
+import User from './models/user.js';
 import Tweet from './models/tweet.js';
 
 const app = express();
