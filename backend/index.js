@@ -7,11 +7,16 @@ import Tweet from './models/tweet.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URL = process.env.MONGO_URL;
+const MONGO_URL = process.env.MONGO_URL || process.env.MONGO_URI; // fallback for different env var names
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// ✅ Root route (for Render / browser)
+app.get("/", (req, res) => {
+  res.send("✅ Server is live and connected to MongoDB!");
+});
 
 // MongoDB connection
 mongoose
@@ -19,7 +24,7 @@ mongoose
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// Root
+// API routes
 app.get("/api", (req, res) => {
   res.send("Backend is running 🚀");
 });
@@ -88,7 +93,6 @@ app.patch("/api/updateuser/:email", async (req, res) => {
 app.post("/api/tweet", async (req, res) => {
   try {
     const { authorId, content, image } = req.body;
-
     if (!authorId || !content) return res.status(400).json({ message: "authorId and content are required" });
 
     const user = await User.findById(authorId);
@@ -108,7 +112,6 @@ app.post("/api/tweet", async (req, res) => {
     });
 
     await tweet.save();
-
     res.status(201).json({ message: "Tweet posted successfully", tweet });
   } catch (error) {
     console.error("Tweet posting error:", error);
@@ -129,7 +132,7 @@ app.get("/api/tweet", async (req, res) => {
   }
 });
 
-// ✅ GET tweets by a specific user
+// GET tweets by a specific user
 app.get("/api/tweets/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -146,7 +149,7 @@ app.get("/api/tweets/user/:userId", async (req, res) => {
   }
 });
 
-// ✅ Like tweet
+// Like tweet
 app.post("/api/tweet/like/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -172,7 +175,7 @@ app.post("/api/tweet/like/:id", async (req, res) => {
   }
 });
 
-// ✅ Retweet tweet
+// Retweet tweet
 app.post("/api/tweet/retweet/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -198,4 +201,5 @@ app.post("/api/tweet/retweet/:id", async (req, res) => {
   }
 });
 
+// Start server
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
