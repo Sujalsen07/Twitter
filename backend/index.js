@@ -1,35 +1,57 @@
-import 'dotenv/config';
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import User from './models/User.js';
-import Tweet from './models/tweet.js';
+import "dotenv/config";
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import User from "./models/user.js";
+import Tweet from "./models/tweet.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URL = process.env.MONGO_URL;
+const MONGO_URL = process.env.MONGO_URL || process.env.MONGO_URI;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// MongoDB connection
+// ✅ Root route
+app.get("/", (req, res) => {
+  res.send("✅ Server is live and connected to MongoDB!");
+});
+
+// ✅ MongoDB connect
 mongoose
   .connect(MONGO_URL)
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// Root
-app.get("/api", (req, res) => {
-  res.send("Backend is running 🚀");
-});
+// ======================
+// 👤 USER ROUTES
+// ======================
 
-// Register user
+// Register or login (supports Google Sign-in + email/password)
 app.post("/api/register", async (req, res) => {
-  const { username, displayName, email, password, avatar } = req.body;
   try {
-    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
-    if (existingUser) return res.status(400).json({ message: "Username or email already exists." });
+    const { username, displayName, email, password, avatar, provider } = req.body;
+
+    console.log("📥 Incoming register request:", req.body);
+
+    if (!email || !username || !displayName) {
+      return res.status(400).json({ message: "Missing required fields." });
+    }
+
+    // ✅ Check if email exists
+    let existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(200).json({
+        message: "User already exists, logged in successfully.",
+        user: existingUser,
+      });
+    }
+
+    // ✅ Check if username is already taken
+    let usernameTaken = await User.findOne({ username });
+    if (usernameTaken) {
+      return res.status(400).json({ message: "Username already exists. Please choose another." });
+    }
 
     const newUser = new User({
       username,
@@ -37,59 +59,62 @@ app.post("/api/register", async (req, res) => {
       email,
       password: password || "",
       avatar: avatar || "",
-      provider: password ? "local" : "google",
+      provider: provider || (password ? "local" : "google"),
+      notificationsEnabled: false,
+      bio: "",
+      banner: "",
+      location: "",
+      website: "",
+      joinedDate: new Date().toISOString(),
     });
 
     await newUser.save();
-    res.status(201).json({ message: "User registered successfully.", user: newUser });
+
+    res.status(201).json({
+      message: "User registered successfully.",
+      user: newUser,
+    });
   } catch (error) {
-    console.error("Register error:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
+    console.error("❌ Register error details:", error);
+    res.status(500).json({ message: error.message || "Server error." });
   }
 });
 
-// Get logged-in user
-app.get("/api/loggedinuser", async (req, res) => {
+
+// Get user by ID
+app.get("/api/users/:id", async (req, res) => {
   try {
-    const { email } = req.query;
-    if (!email) return res.status(400).json({ message: "Email required." });
-
-    const user = await User.findOne({ email });
+    const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found." });
-
-    res.status(200).json({ user });
+    res.status(200).json(user);
   } catch (error) {
-    console.error("Error fetching user:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
+    console.error("Fetch user error:", error);
+    res.status(500).json({ message: "Server error." });
   }
 });
 
-// Update user profile
-app.patch("/api/updateuser/:email", async (req, res) => {
-  const { email } = req.params;
-  const updates = req.body;
-
+// Update notification preference
+app.put("/api/users/:id", async (req, res) => {
   try {
-    const user = await User.findOneAndUpdate({ email }, { $set: updates }, { new: true });
+    const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!user) return res.status(404).json({ message: "User not found." });
-
-    const updatedUser = user.toObject();
-    delete updatedUser.__v;
-    delete updatedUser.password;
-
-    res.status(200).json({ message: "Profile updated successfully.", user: updatedUser });
+    res.status(200).json(user);
   } catch (error) {
-    console.error("Profile update error:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
+    console.error("Notification update error:", error);
+    res.status(500).json({ message: "Server error." });
   }
 });
 
-// POST a tweet
+// ======================
+// 🐦 TWEET ROUTES
+// ======================
+
+// Post tweet
 app.post("/api/tweet", async (req, res) => {
   try {
     const { authorId, content, image } = req.body;
-
-    if (!authorId || !content) return res.status(400).json({ message: "authorId and content are required" });
+    if (!authorId || !content)
+      return res.status(400).json({ message: "authorId and content are required" });
 
     const user = await User.findById(authorId);
     if (!user) return res.status(404).json({ message: "Author not found" });
@@ -109,6 +134,16 @@ app.post("/api/tweet", async (req, res) => {
 
     await tweet.save();
 
+    // ✅ Server-side keyword check (optional)
+    if (
+      user.notificationsEnabled &&
+      (content.toLowerCase().includes("cricket") ||
+        content.toLowerCase().includes("science"))
+    ) {
+      console.log(`🔔 Keyword tweet detected for ${user.displayName}:`, content);
+      // You could send WebSocket / push event here in future.
+    }
+
     res.status(201).json({ message: "Tweet posted successfully", tweet });
   } catch (error) {
     console.error("Tweet posting error:", error);
@@ -116,7 +151,7 @@ app.post("/api/tweet", async (req, res) => {
   }
 });
 
-// GET all tweets
+// Get all tweets
 app.get("/api/tweet", async (req, res) => {
   try {
     const tweets = await Tweet.find()
@@ -124,12 +159,12 @@ app.get("/api/tweet", async (req, res) => {
       .sort({ timestamp: -1 });
     res.status(200).json(tweets);
   } catch (error) {
-    console.error("Error fetching tweets:", error);
+    console.error("Fetch tweets error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ✅ GET tweets by a specific user
+// Get tweets by user
 app.get("/api/tweets/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -137,42 +172,41 @@ app.get("/api/tweets/user/:userId", async (req, res) => {
       .populate("author", "username displayName avatar")
       .sort({ timestamp: -1 });
 
-    if (!tweets) return res.status(404).json({ message: "No tweets found for this user" });
-
     res.status(200).json(tweets);
   } catch (error) {
-    console.error("Error fetching user tweets:", error);
+    console.error("Fetch user tweets error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ✅ Like tweet
+// ======================
+// ❤️ Like + 🔁 Retweet
+// ======================
+
 app.post("/api/tweet/like/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { userId } = req.body;
-    if (!userId) return res.status(400).json({ message: "User ID is required" });
 
     const tweet = await Tweet.findById(id);
     if (!tweet) return res.status(404).json({ message: "Tweet not found" });
 
-    tweet.likedBy = tweet.likedBy || [];
     if (tweet.likedBy.includes(userId)) {
       tweet.likedBy = tweet.likedBy.filter((uid) => uid.toString() !== userId);
     } else {
       tweet.likedBy.push(userId);
     }
+
     tweet.likes = tweet.likedBy.length;
     await tweet.save();
 
-    res.status(200).json({ message: "Tweet like updated", likes: tweet.likes, likedBy: tweet.likedBy });
+    res.status(200).json({ message: "Tweet like updated", tweet });
   } catch (error) {
-    console.error("Error liking tweet:", error);
+    console.error("Like error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ✅ Retweet tweet
 app.post("/api/tweet/retweet/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -181,7 +215,6 @@ app.post("/api/tweet/retweet/:id", async (req, res) => {
     const tweet = await Tweet.findById(id);
     if (!tweet) return res.status(404).json({ message: "Tweet not found" });
 
-    tweet.retweetedBy = tweet.retweetedBy || [];
     if (tweet.retweetedBy.includes(userId)) {
       tweet.retweetedBy = tweet.retweetedBy.filter((uid) => uid.toString() !== userId);
     } else {
@@ -191,11 +224,12 @@ app.post("/api/tweet/retweet/:id", async (req, res) => {
     tweet.retweets = tweet.retweetedBy.length;
     await tweet.save();
 
-    res.status(200).json({ message: "Tweet retweet updated", retweets: tweet.retweets });
+    res.status(200).json({ message: "Retweet updated", tweet });
   } catch (error) {
-    console.error("Error retweeting tweet:", error);
+    console.error("Retweet error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
+// ✅ Start Server
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

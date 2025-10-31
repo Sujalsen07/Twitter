@@ -30,7 +30,12 @@ interface AuthContextType {
   user: User | null;
   checkedAuth: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (username: string, displayName: string, email: string, password: string) => Promise<void>;
+  signup: (
+    username: string,
+    displayName: string,
+    email: string,
+    password: string
+  ) => Promise<void>;
   updateProfile: (profileData: Partial<User>) => Promise<User | null>;
   logout: () => Promise<void>;
   isLoading: boolean;
@@ -50,7 +55,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [checkedAuth, setCheckedAuth] = useState(false);
 
-  const axiosInstance = axios.create({ baseURL: "http://localhost:5000/api" });
+  const axiosInstance = axios.create({
+    baseURL: "http://localhost:5000/api",
+  });
 
   // -------------------------------
   // Listen for Firebase auth state
@@ -66,7 +73,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       try {
-        const res = await axiosInstance.get("/loggedinuser", { params: { email: firebaseUser.email } });
+        const res = await axiosInstance.get("/loggedinuser", {
+          params: { email: firebaseUser.email },
+        });
         const backendUser: User = res.data.user || res.data;
         setUser(backendUser);
         localStorage.setItem("twiller-user", JSON.stringify(backendUser));
@@ -86,20 +95,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Login
   // -------------------------------
   const login = async (email: string, password: string) => {
-    if (!email || !password) throw new Error("Email and password are required");
+    if (!email || !password)
+      throw new Error("Email and password are required");
     setIsLoading(true);
     try {
       const usercred = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = usercred.user;
-      if (!firebaseUser?.email) throw new Error("No email found on Firebase user");
+      if (!firebaseUser?.email)
+        throw new Error("No email found on Firebase user");
 
-      const res = await axiosInstance.get("/loggedinuser", { params: { email: firebaseUser.email } });
+      const res = await axiosInstance.get("/loggedinuser", {
+        params: { email: firebaseUser.email },
+      });
       const backendUser: User = res.data.user || res.data;
       setUser(backendUser);
       localStorage.setItem("twiller-user", JSON.stringify(backendUser));
     } catch (error: any) {
       console.error("Login error:", error.response?.data?.message || error.message);
-      throw new Error(error.response?.data?.message || error.message || "Login failed");
+      throw new Error(
+        error.response?.data?.message || error.message || "Login failed"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -108,17 +123,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // -------------------------------
   // Signup
   // -------------------------------
-  const signup = async (username: string, displayName: string, email: string, password: string) => {
+  const signup = async (
+    username: string,
+    displayName: string,
+    email: string,
+    password: string
+  ) => {
     if (!username || !displayName || !email || !password) {
       throw new Error("All fields are required");
     }
     setIsLoading(true);
     try {
-      // 1️⃣ Create Firebase user
-      const usercred = await createUserWithEmailAndPassword(auth, email, password);
+      const usercred = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
       const firebaseUser = usercred.user;
 
-      // 2️⃣ Prepare backend payload
       const payload = {
         username,
         displayName,
@@ -128,56 +150,59 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         bio: "",
         location: "",
         website: "",
-        password, // backend expects this
+        password,
         provider: "local",
       };
 
-      // 3️⃣ Send to backend
       const res = await axiosInstance.post("/register", payload);
       const createdUser: User = res.data.user || res.data;
       setUser(createdUser);
       localStorage.setItem("twiller-user", JSON.stringify(createdUser));
     } catch (error: any) {
       console.error("Signup error:", error.response?.data?.message || error.message);
-      throw new Error(error.response?.data?.message || error.message || "Signup failed");
+      throw new Error(
+        error.response?.data?.message || error.message || "Signup failed"
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   // -------------------------------
-  // Google Sign-in
+  // ✅ Fixed Google Sign-in
   // -------------------------------
   const googlesignin = async () => {
     setIsLoading(true);
     const provider = new GoogleAuthProvider();
+
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
-      if (!firebaseUser?.email) throw new Error("No email found on Google user");
+      if (!firebaseUser?.email)
+        throw new Error("No email found on Google user");
 
-      try {
-        const res = await axiosInstance.get("/loggedinuser", { params: { email: firebaseUser.email } });
-        setUser(res.data.user || res.data);
-        localStorage.setItem("twiller-user", JSON.stringify(res.data.user || res.data));
-      } catch (err: any) {
-        if (err.response?.status === 404) {
-          const newUser: Omit<User, "password"> = {
-            username: firebaseUser.email.split("@")[0],
-            displayName: firebaseUser.displayName || "User",
-            avatar: firebaseUser.photoURL || "",
-            banner: "",
-            email: firebaseUser.email,
-            provider: "google",
-          };
-          const registerRes = await axiosInstance.post("/register", newUser);
-          setUser(registerRes.data.user || registerRes.data);
-          localStorage.setItem("twiller-user", JSON.stringify(registerRes.data.user || registerRes.data));
-        } else throw err;
-      }
+      // ✅ Always send to backend /register
+      const payload = {
+        username: firebaseUser.email.split("@")[0],
+        displayName: firebaseUser.displayName || "User",
+        email: firebaseUser.email,
+        avatar: firebaseUser.photoURL || "",
+        provider: "google",
+      };
+
+      const res = await axiosInstance.post("/register", payload);
+      const userData = res.data.user || res.data;
+
+      setUser(userData);
+      localStorage.setItem("twiller-user", JSON.stringify(userData));
     } catch (error: any) {
-      console.error("Google sign-in error:", error.message);
-      throw new Error(error.message || "Google Sign-in failed");
+      console.error(
+        "Google sign-in error:",
+        error.response?.data?.message || error.message
+      );
+      throw new Error(
+        error.response?.data?.message || error.message || "Google Sign-in failed"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -202,11 +227,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // -------------------------------
   // Update profile
   // -------------------------------
-  const updateProfile = async (profileData: Partial<User>): Promise<User | null> => {
+  const updateProfile = async (
+    profileData: Partial<User>
+  ): Promise<User | null> => {
     if (!user?._id) return null;
     setIsLoading(true);
     try {
-      const res = await axiosInstance.patch(`/updateuser/${user._id}`, profileData);
+      const res = await axiosInstance.patch(
+        `/updateuser/${user._id}`,
+        profileData
+      );
       const updatedUser: User = res.data.user || res.data;
       setUser(updatedUser);
       localStorage.setItem("twiller-user", JSON.stringify(updatedUser));
@@ -220,7 +250,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, checkedAuth, login, signup, logout, updateProfile, isLoading, googlesignin }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        checkedAuth,
+        login,
+        signup,
+        logout,
+        updateProfile,
+        isLoading,
+        googlesignin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

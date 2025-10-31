@@ -3,19 +3,20 @@
 import { useAuth } from "@/context/AuthContext";
 import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, Globe, Link, CalendarDays, Camera } from "lucide-react";
+import { ArrowLeft, Globe, Link, CalendarDays, Camera, Bell } from "lucide-react";
 import TweetCard from "./TweetCard";
 import Editprofile from "./Editprofile";
 import axios from "axios";
+import { requestNotificationPermission } from "@/lib/utils";
 
 const ProfilePage = () => {
-  const { user, isLoading } = useAuth(); // ✅ use correct isLoading from context
-
+  const { user, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("posts");
   const [showEditModal, setShowEditModal] = useState(false);
   const [tweets, setTweets] = useState<any[]>([]);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
-  // Fetch user's tweets from backend
+  // Fetch user's tweets
   useEffect(() => {
     if (!user?._id) return;
 
@@ -31,7 +32,46 @@ const ProfilePage = () => {
     fetchTweets();
   }, [user?._id]);
 
-  // Show nothing while loading or no user
+  // Fetch user notification preference
+  useEffect(() => {
+    if (!user?._id) return;
+
+    const fetchPref = async () => {
+      try {
+        const res = await axios.get(`http://localhost:5000/api/users/${user._id}`);
+        setNotificationsEnabled(res.data.notificationsEnabled || false);
+      } catch (err) {
+        console.error("Error fetching notification preference:", err);
+      }
+    };
+
+    fetchPref();
+  }, [user?._id]);
+
+  // Toggle notification permission
+  const handleNotificationToggle = async () => {
+    if (!user?._id) return;
+
+    let newValue = !notificationsEnabled;
+
+    if (newValue) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        alert("Please allow browser notifications to enable this feature.");
+        return;
+      }
+    }
+
+    try {
+      await axios.put(`http://localhost:5000/api/users/${user._id}`, {
+        notificationsEnabled: newValue,
+      });
+      setNotificationsEnabled(newValue);
+    } catch (err) {
+      console.error("Error updating notification preference:", err);
+    }
+  };
+
   if (isLoading || !user) return null;
 
   return (
@@ -76,7 +116,7 @@ const ProfilePage = () => {
         </div>
       </div>
 
-      {/* Profile Info & Edit Button */}
+      {/* Profile Info + Buttons */}
       <div className="p-4 sm:p-6 border-b border-gray-800 mt-2 relative">
         <div className="flex justify-between items-start">
           <div>
@@ -85,13 +125,29 @@ const ProfilePage = () => {
               @{user.username || user.displayName?.split(" ")[0]?.toLowerCase() || "user"}
             </p>
           </div>
-          <Button
-            variant="outline"
-            className="text-white border-gray-600 bg-black/40 backdrop-blur-sm hover:bg-gray-800"
-            onClick={() => setShowEditModal(true)}
-          >
-            Edit Profile
-          </Button>
+
+          <div className="flex gap-2">
+            {/* Notification toggle */}
+            <Button
+              variant="outline"
+              onClick={handleNotificationToggle}
+              className={`text-white border-gray-600 bg-black/40 backdrop-blur-sm hover:bg-gray-800 flex items-center gap-2 ${
+                notificationsEnabled ? "border-green-500" : "border-gray-600"
+              }`}
+            >
+              <Bell size={16} />
+              {notificationsEnabled ? "Disable" : "Enable"} Notifications
+            </Button>
+
+            {/* Edit Profile */}
+            <Button
+              variant="outline"
+              className="text-white border-gray-600 bg-black/40 backdrop-blur-sm hover:bg-gray-800"
+              onClick={() => setShowEditModal(true)}
+            >
+              Edit Profile
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-3 text-gray-400 text-sm mt-3">
@@ -127,7 +183,7 @@ const ProfilePage = () => {
         ))}
       </div>
 
-      {/* Posts */}
+      {/* Tweets */}
       <div>
         {tweets.length > 0 ? (
           tweets.map((tweet) => <TweetCard key={tweet._id} tweet={tweet} />)
@@ -137,7 +193,9 @@ const ProfilePage = () => {
       </div>
 
       {/* Edit Profile Modal */}
-      {showEditModal && <Editprofile isOpen={showEditModal} onClose={() => setShowEditModal(false)} />}
+      {showEditModal && (
+        <Editprofile isOpen={showEditModal} onClose={() => setShowEditModal(false)} />
+      )}
     </div>
   );
 };
